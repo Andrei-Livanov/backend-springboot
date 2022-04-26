@@ -1,0 +1,111 @@
+package ru.webapp.springboot.auth.config;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.session.SessionManagementFilter;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import ru.webapp.springboot.auth.filter.AuthTokenFilter;
+import ru.webapp.springboot.auth.filter.ExceptionHandlerFilter;
+import ru.webapp.springboot.auth.service.UserDetailsServiceImpl;
+
+@Configuration
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+@EnableAsync
+public class SpringConfig extends WebSecurityConfigurerAdapter {
+
+    @Value("${client.url}")
+    private String clientURL;
+
+    private UserDetailsServiceImpl userDetailsService;
+    private AuthTokenFilter authTokenFilter;
+    private ExceptionHandlerFilter exceptionHandlerFilter;
+
+    @Autowired
+    public void setUserDetailsService(UserDetailsServiceImpl userDetailsService) {
+        this.userDetailsService = userDetailsService;
+    }
+
+    @Autowired
+    public void setAuthTokenFilter(AuthTokenFilter authTokenFilter) {
+        this.authTokenFilter = authTokenFilter;
+    }
+
+    @Autowired
+    public void setExceptionHandlerFilter(ExceptionHandlerFilter exceptionHandlerFilter) {
+        this.exceptionHandlerFilter = exceptionHandlerFilter;
+    }
+
+    @Bean
+    public WebMvcConfigurer corsConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
+                registry.addMapping("/**")
+                        .allowedOrigins(clientURL)
+                        .allowCredentials(true)
+                        .allowedHeaders("*")
+                        .allowedMethods("*");
+            }
+        };
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    @Override
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean();
+    }
+
+    @Override
+    public void configure(AuthenticationManagerBuilder authenticationManagerBuilder) throws Exception {
+        authenticationManagerBuilder
+                .userDetailsService(userDetailsService)
+                .passwordEncoder(passwordEncoder());
+    }
+
+    @Bean
+    public FilterRegistrationBean<AuthTokenFilter> registration(AuthTokenFilter filter) {
+
+        FilterRegistrationBean<AuthTokenFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+
+        return registration;
+    }
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+
+        http.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+
+        http.csrf().disable();
+
+        http.formLogin().disable();
+        http.httpBasic().disable();
+
+        http.requiresChannel().anyRequest().requiresSecure();
+
+        http.addFilterBefore(authTokenFilter, SessionManagementFilter.class);
+
+        http.addFilterBefore(exceptionHandlerFilter, AuthTokenFilter.class);
+    }
+
+}
